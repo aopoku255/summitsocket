@@ -1,0 +1,23 @@
+{
+  "development": {
+    "username": "bacaris_summitchat",
+    "password": "WRAXqu[%o88NzG--",
+    "database": "bacaris_summitchat",
+    "host": "190.92.158.104",
+    "dialect": "mysql"
+  },
+  "test": {
+    "username": "root",
+    "password": null,
+    "database": "database_test",
+    "host": "127.0.0.1",
+    "dialect": "mysql"
+  },
+  "production": {
+    "username": "root",
+    "password": null,
+    "database": "dsummitchat",
+    "host": "127.0.0.1",
+    "dialect": "mysql"
+  }
+}
