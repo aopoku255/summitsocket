@@ -1,71 +1,85 @@
 const express = require("express");
-const http = require("http");
 const socketIo = require("socket.io");
-const cors = require("cors");
-const app = express();
+const path = require("path");
 const models = require("./models");
 
-app.use(cors());
+const app = express();
 
-const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
+// Middleware
+app.use(require("cors")());
+app.use(express.json());
 
-let connectedUsers = 0;
+// Serve static files if needed (optional)
+app.use(express.static(path.join(__dirname, "public")));
 
-io.on("connection", async (socket) => {
-  connectedUsers++;
-  console.log("✅ A user connected");
+let io;
 
-  // Send message history to the new user
-  const messages = await models.Message.findAll({
-    order: [["timestamp", "ASC"]],
-    include: [{ model: models.Message, as: "repliedMessage" }],
-    limit: 100,
+// This function will be called by Passenger
+const startApp = (server) => {
+  io = socketIo(server, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+    },
   });
-  socket.emit("messageHistory", messages);
 
-  io.emit("userCount", connectedUsers);
+  let connectedUsers = 0;
 
-  socket.on("message", async (msg) => {
-    console.log("📨 Message received:", msg);
+  io.on("connection", async (socket) => {
+    connectedUsers++;
+    console.log("✅ A user connected");
 
-    const savedMessage = await models.Message.create({
-      userId: msg.userId,
-      name: msg.name,
-      profileImageUrl: msg.profileImageUrl || "",
-      message: msg.message,
-      timestamp: new Date(),
-      replyToMessageId: msg.replyToMessageId || null,
+    const messages = await models.Message.findAll({
+      order: [["timestamp", "ASC"]],
+      include: [{ model: models.Message, as: "repliedMessage" }],
+      limit: 100,
     });
 
-    // Optionally fetch replied message if needed in frontend
-    let fullMessage = savedMessage.toJSON();
-
-    if (msg.replyToMessageId) {
-      const repliedMessage = await models.Message.findByPk(
-        msg.replyToMessageId
-      );
-      if (repliedMessage) {
-        fullMessage.repliedMessage = repliedMessage;
-      }
-    }
-
-    io.emit("message", fullMessage);
-  });
-
-  socket.on("disconnect", () => {
-    connectedUsers--;
-    console.log("❌ A user disconnected");
+    socket.emit("messageHistory", messages);
     io.emit("userCount", connectedUsers);
-  });
-});
 
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, async () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+    socket.on("message", async (msg) => {
+      console.log("📨 Message received:", msg);
+
+      const savedMessage = await models.Message.create({
+        userId: msg.userId,
+        name: msg.name,
+        profileImageUrl: msg.profileImageUrl || "",
+        message: msg.message,
+        timestamp: new Date(),
+        replyToMessageId: msg.replyToMessageId || null,
+      });
+
+      let fullMessage = savedMessage.toJSON();
+
+      if (msg.replyToMessageId) {
+        const repliedMessage = await models.Message.findByPk(
+          msg.replyToMessageId
+        );
+        if (repliedMessage) {
+          fullMessage.repliedMessage = repliedMessage;
+        }
+      }
+
+      io.emit("message", fullMessage);
+    });
+
+    socket.on("disconnect", () => {
+      connectedUsers--;
+      console.log("❌ A user disconnected");
+      io.emit("userCount", connectedUsers);
+    });
+  });
+};
+
+// Export for Passenger to pick up
+module.exports = app;
+
+// Check if run directly or by Passenger
+if (require.main === module) {
+  const port = process.env.PORT || 3000;
+  const server = app.listen(port, () =>
+    console.log(`🚀 Server running on port ${port}`)
+  );
+  startApp(server);
+}
